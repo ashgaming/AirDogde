@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Play Sky Navigator, a 2D flying simulator game. Navigate your airplane, avoid obstacles, collect fuel, and aim for a high score!">
+    <meta name="keywords" content="Sky Navigator, 2D game, flying simulator, airplane game, mobile game, desktop game, HTML5 game">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="xAI">
+    <!-- Open Graph Tags for Social Media -->
+    <meta property="og:title" content="Sky Navigator - 2D Flying Simulator Game">
+    <meta property="og:description" content="Fly your airplane in Sky Navigator! Avoid obstacles, collect fuel, and achieve the highest score in this fun 2D simulator game.">
+    <meta property="og:image" content="sky-navigator-screenshot.png"> <!-- Replace with actual screenshot URL -->
+    <meta property="og:url" content="https://yourwebsite.com/sky-navigator"> <!-- Replace with actual URL -->
+    <meta property="og:type" content="website">
+    <!-- Twitter Card Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Sky Navigator - 2D Flying Simulator Game">
+    <meta name="twitter:description" content="Fly your airplane in Sky Navigator! Avoid obstacles, collect fuel, and achieve the highest score.">
+    <meta name="twitter:image" content="sky-navigator-screenshot.png"> <!-- Replace with actual screenshot URL -->
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="favicon.png"> <!-- Replace with actual favicon URL -->
+    <title>Sky Navigator - 2D Flying Simulator Game</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #87CEEB;
+            overflow: hidden;
+        }
+        canvas {
+            border: 2px solid #333;
+            touch-action: none;
+        }
+        #restartBtn {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 24px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: none;
+            touch-action: manipulation;
+            user-select: none;
+            z-index: 2000;
+        }
+        #restartBtn:active {
+            background: #b71c1c;
+        }
+        @media (max-width: 600px) {
+            #restartBtn {
+                padding: 10px 20px;
+                font-size: 16px;
+            }
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .screen-reader-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Sky Navigator - 2D Flying Simulator Game</h1>
+    <main>
+        <canvas id="gameCanvas"></canvas>
+        <button id="restartBtn">Restart</button>
+        <p class="screen-reader-only">
+            Sky Navigator is a 2D flying simulator game where you control an airplane. Avoid obstacles, collect fuel, and aim for a high score. Use touch, mouse, or keyboard controls to navigate.
+        </p>
+    </main>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas sizing
+        let scaleFactor = 1;
+        function resizeCanvas() {
+            const maxWidth = 800;
+            const maxHeight = 600;
+            const minWidth = 320;
+            const minHeight = 240;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            const targetSize = Math.min(windowWidth, windowHeight) * 0.9;
+            let newWidth = Math.min(Math.max(targetSize, minWidth), maxWidth);
+            let newHeight = (newWidth / 4) * 3;
+            if (newHeight > maxHeight) {
+                newHeight = maxHeight;
+                newWidth = (newHeight / 3) * 4;
+            }
+            if (newHeight < minHeight) {
+                newHeight = minHeight;
+                newWidth = (newHeight / 3) * 4;
+            }
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+            scaleFactor = newWidth / 800;
+            console.log(`Canvas resized to ${canvas.width}x${canvas.height}, scaleFactor: ${scaleFactor}`);
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Game state
+        let game = {
+            score: 0,
+            fuel: 100,
+            gameOver: false,
+            distance: 0,
+            gameOverReason: ''
+        };
+
+        // Player (plane)
+        const planeBase = { width: 40, height: 20 };
+        const plane = {
+            x: 100 * scaleFactor,
+            y: canvas.height / 2,
+            width: planeBase.width * scaleFactor,
+            height: planeBase.height * scaleFactor,
+            velocityY: 0,
+            speed: 2,
+            maxSpeed: 4,
+            minSpeed: 1,
+            gravity: 0.15,
+            lift: -0.35
+        };
+
+        // Load airplane image
+        const airplaneImage = new Image();
+        airplaneImage.src = 'airplane.png';
+        let imageLoaded = false;
+        airplaneImage.onload = () => {
+            console.log('Airplane image loaded successfully');
+            imageLoaded = true;
+        };
+        airplaneImage.onerror = () => {
+            console.error('Failed to load airplane image, using fallback');
+            imageLoaded = false;
+        };
+
+        // Load obstacle image
+        const obstacleImage = new Image();
+        obstacleImage.src = 'obstacle.png';
+        let obstacleImageLoaded = false;
+        obstacleImage.onload = () => {
+            console.log('Obstacle image loaded successfully');
+            obstacleImageLoaded = true;
+        };
+        obstacleImage.onerror = () => {
+            console.error('Failed to load obstacle image, using fallback');
+            obstacleImageLoaded = false;
+        };
+
+        // Load fuel image
+        const fuelImage = new Image();
+        fuelImage.src = 'fuel.png';
+        let fuelImageLoaded = false;
+        fuelImage.onload = () => {
+            console.log('Fuel image loaded successfully');
+            fuelImageLoaded = true;
+        };
+        fuelImage.onerror = () => {
+            console.error('Failed to load fuel image, using fallback');
+            fuelImageLoaded = false;
+        };
+
+        // Game objects
+        let obstacles = [];
+        let fuels = [];
+        let backgroundX = 0;
+        const backgroundSpeed = 2;
+
+        // Input handling
+        const inputs = {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            boost: false,
+            upValue: 0,
+            downValue: 0,
+            leftValue: 0,
+            rightValue: 0
+        };
+
+        // Touch tracking
+        let isTouching = false;
+
+        // Reset game state
+        function resetGame() {
+            console.log('Restart button clicked');
+            game = {
+                score: 0,
+                fuel: 100,
+                gameOver: false,
+                distance: 0,
+                gameOverReason: ''
+            };
+            plane.x = 100 * scaleFactor;
+            plane.y = canvas.height / 2;
+            plane.width = planeBase.width * scaleFactor;
+            plane.height = planeBase.height * scaleFactor;
+            plane.velocityY = 0;
+            plane.speed = 2;
+            obstacles = [];
+            fuels = [];
+            backgroundX = 0;
+            obstacleTimer = 0;
+            fuelTimer = 0;
+            lastTime = 0;
+            inputs.up = false;
+            inputs.down = false;
+            inputs.left = false;
+            inputs.right = false;
+            inputs.boost = false;
+            inputs.upValue = 0;
+            inputs.downValue = 0;
+            inputs.leftValue = 0;
+            inputs.rightValue = 0;
+            isTouching = false;
+            restartBtn.style.display = 'none';
+        }
+
+        // Keyboard input
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp') inputs.up = true;
+            if (e.key === 'ArrowDown') inputs.down = true;
+            if (e.key === 'ArrowLeft') inputs.left = true;
+            if (e.key === 'ArrowRight') inputs.right = true;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowUp') inputs.up = false;
+            if (e.key === 'ArrowDown') inputs.down = false;
+            if (e.key === 'ArrowLeft') inputs.left = false;
+            if (e.key === 'ArrowRight') inputs.right = false;
+        });
+
+        // Mouse input for "up" event
+        document.body.addEventListener('mousedown', e => {
+            if (game.gameOver) return;
+            inputs.up = true;
+            inputs.upValue = 1;
+            console.log(`Mouse down at (${e.clientX}, ${e.clientY}), upValue: ${inputs.upValue}`);
+        });
+        document.body.addEventListener('mouseup', e => {
+            inputs.up = false;
+            inputs.upValue = 0;
+            console.log(`Mouse up, upValue: ${inputs.upValue}`);
+        });
+
+        // Touch input for "up" event
+        document.body.addEventListener('touchstart', e => {
+            e.preventDefault();
+            if (game.gameOver || isTouching) return;
+            isTouching = true;
+            inputs.up = true;
+            inputs.upValue = 1;
+            console.log(`Touch started at (${e.changedTouches[0].clientX}, ${e.changedTouches[0].clientY}), upValue: ${inputs.upValue}`);
+        });
+        document.body.addEventListener('touchend', e => {
+            e.preventDefault();
+            if (!isTouching) return;
+            isTouching = false;
+            inputs.up = false;
+            inputs.upValue = 0;
+            console.log(`Touch ended, upValue: ${inputs.upValue}`);
+        });
+        document.body.addEventListener('touchmove', e => e.preventDefault());
+
+        // Restart button
+        const restartBtn = document.getElementById('restartBtn');
+        restartBtn.addEventListener('click', () => resetGame());
+        restartBtn.addEventListener('touchstart', e => {
+            e.preventDefault();
+            resetGame();
+        });
+        restartBtn.addEventListener('touchmove', e => e.preventDefault());
+
+        // Gamepad support
+        let gamepadConnected = false;
+        window.addEventListener('gamepadconnected', e => {
+            console.log('Gamepad connected:', e.gamepad);
+            gamepadConnected = true;
+        });
+        window.addEventListener('gamepaddisconnected', e => {
+            console.log('Gamepad disconnected:', e.gamepad);
+            gamepadConnected = false;
+        });
+
+        function processGamepad() {
+            if (!gamepadConnected) return;
+            try {
+                const gamepads = navigator.getGamepads();
+                const gamepad = gamepads[0];
+                if (!gamepad) return;
+
+                inputs.leftValue = gamepad.axes[0] < -0.15 ? -gamepad.axes[0] : 0;
+                inputs.rightValue = gamepad.axes[0] > 0.15 ? gamepad.axes[0] : 0;
+                inputs.upValue = gamepad.axes[1] < -0.15 ? -gamepad.axes[1] : 0;
+                inputs.downValue = gamepad.axes[1] > 0.15 ? gamepad.axes[1] : 0;
+                inputs.boost = gamepad.buttons[0].pressed;
+            } catch (error) {
+                console.error('Gamepad processing error:', error);
+            }
+        }
+
+        // Game objects generation
+        const obstacleBase = { width: 30, height: 30 };
+        const fuelBase = { width: 20, height: 20 };
+        function spawnObstacle() {
+            const obstacle = {
+                x: canvas.width,
+                y: Math.random() * (canvas.height - 50 * scaleFactor) + 25 * scaleFactor,
+                width: obstacleBase.width * scaleFactor,
+                height: obstacleBase.height * scaleFactor,
+                type: 'bird'
+            };
+            obstacles.push(obstacle);
+        }
+
+        function spawnFuel() {
+            const fuel = {
+                x: canvas.width,
+                y: Math.random() * (canvas.height - 50 * scaleFactor) + 25 * scaleFactor,
+                width: fuelBase.width * scaleFactor,
+                height: fuelBase.height * scaleFactor
+            };
+            fuels.push(fuel);
+        }
+
+        // Collision detection
+        function checkCollision(a, b) {
+            return a.x < b.x + b.width &&
+                   a.x + a.width > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y;
+        }
+
+        // Game loop
+        let lastTime = 0;
+        let obstacleTimer = 0;
+        let fuelTimer = 0;
+
+        function gameLoop(timestamp) {
+            let deltaTime = (timestamp - lastTime) / 16.67;
+            deltaTime = Math.min(deltaTime, 2);
+            lastTime = timestamp;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(backgroundX, canvas.height - 50 * scaleFactor, canvas.width * 2, 50 * scaleFactor);
+
+            if (!game.gameOver) {
+                // Process gamepad inputs
+                processGamepad();
+
+                // Update plane
+                const liftInput = inputs.upValue - inputs.downValue;
+                plane.velocityY += plane.lift * liftInput * deltaTime;
+                if (inputs.right || inputs.boost) plane.speed = Math.min(plane.speed + 0.15 * inputs.rightValue, plane.maxSpeed);
+                if (inputs.left) plane.speed = Math.max(plane.speed - 0.15 * inputs.leftValue, plane.minSpeed);
+
+                // Apply physics
+                plane.velocityY += plane.gravity * deltaTime;
+                plane.velocityY *= 0.98;
+                plane.velocityY = Math.max(-4, Math.min(4, plane.velocityY));
+                plane.y += plane.velocityY * deltaTime;
+
+                // Check for bottom collision
+                if (plane.y >= canvas.height - plane.height) {
+                    game.gameOver = true;
+                    game.gameOverReason = 'Crashed!';
+                }
+
+                // Keep plane above top edge
+                plane.y = Math.max(0, plane.y);
+
+                // Fuel consumption
+                if (game.fuel <= 0) {
+                    game.gameOver = true;
+                    game.gameOverReason = 'Out of Fuel!';
+                } else {
+                    game.fuel -= 0.05 * deltaTime;
+                }
+
+                // Background scrolling
+                backgroundX -= backgroundSpeed * deltaTime;
+                if (backgroundX <= -canvas.width) backgroundX = 0;
+
+                // Spawn objects
+                obstacleTimer += deltaTime;
+                fuelTimer += deltaTime;
+                if (obstacleTimer > 60) {
+                    spawnObstacle();
+                    obstacleTimer = 0;
+                }
+                if (fuelTimer > 120) {
+                    spawnFuel();
+                    fuelTimer = 0;
+                }
+
+                // Update objects
+                obstacles.forEach(obstacle => obstacle.x -= (backgroundSpeed + plane.speed) * deltaTime);
+                fuels.forEach(fuel => fuel.x -= (backgroundSpeed + plane.speed) * deltaTime);
+
+                // Check collisions
+                obstacles = obstacles.filter(obstacle => {
+                    if (checkCollision(plane, obstacle)) {
+                        game.gameOver = true;
+                        game.gameOverReason = 'Hit Obstacle!';
+                        return false;
+                    }
+                    return obstacle.x + obstacle.width > 0;
+                });
+
+                fuels = fuels.filter(fuel => {
+                    if (checkCollision(plane, fuel)) {
+                        game.fuel = Math.min(100, game.fuel + 20);
+                        game.score += 10;
+                        return false;
+                    }
+                    return fuel.x + fuel.width > 0;
+                });
+
+                // Update score
+                game.distance += plane.speed * deltaTime;
+                game.score = Math.floor(game.distance / 10);
+
+                // Draw plane (scaled 2x)
+                ctx.save();
+                ctx.translate(plane.x + plane.width / 2, plane.y + plane.height / 2);
+                ctx.rotate(plane.velocityY * 0.1);
+                if (imageLoaded) {
+                    const renderWidth = plane.width * 2;
+                    const renderHeight = plane.height * 2;
+                    ctx.drawImage(airplaneImage, -plane.width, -plane.height, renderWidth, renderHeight);
+                    console.log(`Rendering airplane image at ${renderWidth}x${renderHeight}`);
+                } else {
+                    const renderWidth = plane.width * 2;
+                    const renderHeight = plane.height * 2;
+                    ctx.fillStyle = 'gray';
+                    ctx.fillRect(-plane.width, -plane.height, renderWidth, renderHeight);
+                }
+                ctx.restore();
+
+                // Draw obstacles with image (scaled 2x)
+                obstacles.forEach(obstacle => {
+                    ctx.save();
+                    ctx.translate(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
+                    if (obstacleImageLoaded) {
+                        const renderWidth = obstacle.width * 2;
+                        const renderHeight = obstacle.height * 2;
+                        ctx.drawImage(obstacleImage, -obstacle.width, -obstacle.height, renderWidth, renderHeight);
+                    } else {
+                        const renderWidth = obstacle.width * 2;
+                        const renderHeight = obstacle.height * 2;
+                        ctx.fillStyle = 'red';
+                        ctx.fillRect(-obstacle.width, -obstacle.height, renderWidth, renderHeight);
+                    }
+                    ctx.restore();
+                });
+
+                // Draw fuel pickups with image (scaled 2x)
+                fuels.forEach(fuel => {
+                    ctx.save();
+                    ctx.translate(fuel.x + fuel.width / 2, fuel.y + fuel.height / 2);
+                    if (fuelImageLoaded) {
+                        const renderWidth = fuel.width * 2;
+                        const renderHeight = fuel.height * 2;
+                        ctx.drawImage(fuelImage, -fuel.width, -fuel.height, renderWidth, renderHeight);
+                    } else {
+                        const renderWidth = fuel.width * 2;
+                        const renderHeight = fuel.height * 2;
+                        ctx.fillStyle = 'yellow';
+                        ctx.fillRect(-fuel.width, -fuel.height, renderWidth, renderHeight);
+                    }
+                    ctx.restore();
+                });
+
+                // Draw HUD
+                ctx.fillStyle = 'black';
+                ctx.font = `${20 * scaleFactor}px Arial`;
+                ctx.fillText('Score: ' + game.score, 10 * scaleFactor, 30 * scaleFactor);
+                ctx.fillText('Fuel: ' + Math.floor(game.fuel) + '%', 10 * scaleFactor, 60 * scaleFactor);
+                ctx.fillText(`Inputs: Up:${inputs.upValue.toFixed(2)} Down:${inputs.downValue.toFixed(2)} Left:${inputs.leftValue.toFixed(2)} Right:${inputs.rightValue.toFixed(2)}`, 10 * scaleFactor, 90 * scaleFactor);
+            } else {
+                // Game over screen
+                ctx.fillStyle = 'red';
+                ctx.font = `${48 * scaleFactor}px Arial`;
+                ctx.fillText(`${game.gameOverReason}`, canvas.width / 4, canvas.height / 2 - 50 * scaleFactor);
+                ctx.fillText(`Score: ${game.score}`, canvas.width / 4, canvas.height / 2 + 50 * scaleFactor);
+                restartBtn.style.display = 'block';
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
